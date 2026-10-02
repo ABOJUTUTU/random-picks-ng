@@ -50,28 +50,45 @@ const statuses = [
 ];
 
 /*
- * Converts Nigerian phone numbers into a consistent format.
+ * Reduces any Nigerian phone number to a clean local format (0XXXXXXXXXX).
  *
- * Examples:
- * 08012345678
- * +2348012345678
- * 2348012345678
- * 080 1234 5678
- * 080-1234-5678
- *
- * all become:
- * 08012345678
+ * Strips EVERYTHING that is not a digit — spaces, +, (), -, dots, and the
+ * invisible Unicode marks (left-to-right / right-to-left marks, non-breaking
+ * spaces) that mobile keyboards and contact autofill silently insert. Those
+ * invisible characters are the usual reason a lookup works on desktop but
+ * fails on a phone.
  */
 function normalizePhone(value: string) {
-  let phone = value.trim().replace(/[\s()-]/g, "");
+  let digits = value.replace(/\D/g, "");
 
-  if (phone.startsWith("+234")) {
-    phone = "0" + phone.slice(4);
-  } else if (phone.startsWith("234")) {
-    phone = "0" + phone.slice(3);
+  // International format -> local
+  if (digits.startsWith("234")) {
+    digits = "0" + digits.slice(3);
   }
 
-  return phone;
+  // Typed without the leading 0
+  if (digits.length === 10) {
+    digits = "0" + digits;
+  }
+
+  return digits;
+}
+
+/*
+ * Every common way the same number could be stored, so the lookup matches
+ * whatever format was used at checkout — while still filtering by phone on
+ * the server (so an order can't be fetched by guessing its ID alone).
+ */
+function phoneVariants(value: string) {
+  const local = normalizePhone(value); // 08012345678
+  const bare = local.startsWith("0") ? local.slice(1) : local; // 8012345678
+
+  return [...new Set([
+    local, // 08012345678
+    bare, // 8012345678
+    "234" + bare, // 2348012345678
+    "+234" + bare, // +2348012345678
+  ])];
 }
 
 export default function TrackOrderPage() {
@@ -98,30 +115,19 @@ export default function TrackOrderPage() {
     setLoading(true);
     setError("");
 
-    const enteredPhone = normalizePhone(phone);
-
     /*
-     * First try the normalized phone number.
+     * Match the order id together with any common format of the entered
+     * phone number. Filtering by phone on the server keeps order details
+     * private (an order can't be pulled by guessing its id alone), while
+     * the variants make the match tolerant of mobile keyboard / autofill
+     * quirks.
      */
-    let result = await supabase
+    const result = await supabase
       .from("orders")
       .select("*")
       .eq("id", numericOrderId)
-      .eq("phone", enteredPhone)
+      .in("phone", phoneVariants(phone))
       .maybeSingle();
-
-    /*
-     * If the database contains the phone in another common format,
-     * try the original value as well.
-     */
-    if (!result.data && !result.error && enteredPhone !== phone.trim()) {
-      result = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", numericOrderId)
-        .eq("phone", phone.trim())
-        .maybeSingle();
-    }
 
     if (result.error) {
       console.error("Order search error:", result.error);
@@ -142,36 +148,21 @@ export default function TrackOrderPage() {
 
     setRefreshing(true);
 
-    const phoneVariants = [
-      order.phone,
-      normalizePhone(order.phone),
-    ];
+    /*
+     * order.phone is already the exact value stored in the database,
+     * so we can match it directly.
+     */
+    const result = await supabase
+      .from("orders")
+      .select("*")
+      .eq("id", order.id)
+      .eq("phone", order.phone)
+      .maybeSingle();
 
-    let data: Order | null = null;
-    let supabaseError = null;
-
-    for (const phoneValue of [...new Set(phoneVariants)]) {
-      const result = await supabase
-        .from("orders")
-        .select("*")
-        .eq("id", order.id)
-        .eq("phone", phoneValue)
-        .maybeSingle();
-
-      if (result.data) {
-        data = result.data as Order;
-        break;
-      }
-
-      if (result.error) {
-        supabaseError = result.error;
-      }
-    }
-
-    if (supabaseError && !data) {
-      console.error("Order refresh error:", supabaseError);
-    } else if (data) {
-      setOrder(data);
+    if (result.error) {
+      console.error("Order refresh error:", result.error);
+    } else if (result.data) {
+      setOrder(result.data as Order);
     }
 
     setRefreshing(false);
