@@ -49,6 +49,31 @@ const statuses = [
   },
 ];
 
+/*
+ * Converts Nigerian phone numbers into a consistent format.
+ *
+ * Examples:
+ * 08012345678
+ * +2348012345678
+ * 2348012345678
+ * 080 1234 5678
+ * 080-1234-5678
+ *
+ * all become:
+ * 08012345678
+ */
+function normalizePhone(value: string) {
+  let phone = value.trim().replace(/[\s()-]/g, "");
+
+  if (phone.startsWith("+234")) {
+    phone = "0" + phone.slice(4);
+  } else if (phone.startsWith("234")) {
+    phone = "0" + phone.slice(3);
+  }
+
+  return phone;
+}
+
 export default function TrackOrderPage() {
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
@@ -63,7 +88,7 @@ export default function TrackOrderPage() {
       return;
     }
 
-    const numericOrderId = Number(orderId);
+    const numericOrderId = Number(orderId.trim());
 
     if (!Number.isInteger(numericOrderId)) {
       setError("Please enter a valid order number.");
@@ -73,22 +98,40 @@ export default function TrackOrderPage() {
     setLoading(true);
     setError("");
 
-    const { data, error: supabaseError } = await supabase
+    const enteredPhone = normalizePhone(phone);
+
+    /*
+     * First try the normalized phone number.
+     */
+    let result = await supabase
       .from("orders")
       .select("*")
       .eq("id", numericOrderId)
-      .eq("phone", phone.trim())
+      .eq("phone", enteredPhone)
       .maybeSingle();
 
-    if (supabaseError) {
-      console.error("Order search error:", supabaseError);
+    /*
+     * If the database contains the phone in another common format,
+     * try the original value as well.
+     */
+    if (!result.data && !result.error && enteredPhone !== phone.trim()) {
+      result = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", numericOrderId)
+        .eq("phone", phone.trim())
+        .maybeSingle();
+    }
+
+    if (result.error) {
+      console.error("Order search error:", result.error);
       setError("Something went wrong while checking your order.");
       setOrder(null);
-    } else if (!data) {
+    } else if (!result.data) {
       setError("No order was found with those details.");
       setOrder(null);
     } else {
-      setOrder(data as Order);
+      setOrder(result.data as Order);
     }
 
     setLoading(false);
@@ -99,17 +142,36 @@ export default function TrackOrderPage() {
 
     setRefreshing(true);
 
-    const { data, error: supabaseError } = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", order.id)
-      .eq("phone", order.phone)
-      .maybeSingle();
+    const phoneVariants = [
+      order.phone,
+      normalizePhone(order.phone),
+    ];
 
-    if (supabaseError) {
+    let data: Order | null = null;
+    let supabaseError = null;
+
+    for (const phoneValue of [...new Set(phoneVariants)]) {
+      const result = await supabase
+        .from("orders")
+        .select("*")
+        .eq("id", order.id)
+        .eq("phone", phoneValue)
+        .maybeSingle();
+
+      if (result.data) {
+        data = result.data as Order;
+        break;
+      }
+
+      if (result.error) {
+        supabaseError = result.error;
+      }
+    }
+
+    if (supabaseError && !data) {
       console.error("Order refresh error:", supabaseError);
     } else if (data) {
-      setOrder(data as Order);
+      setOrder(data);
     }
 
     setRefreshing(false);
@@ -140,28 +202,29 @@ export default function TrackOrderPage() {
     : 0;
 
   return (
-    <main className="min-h-screen bg-white text-gray-950">
+    <main className="min-h-screen overflow-x-hidden bg-white text-gray-950">
       {/* Navbar */}
       <nav className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 sm:py-5">
           <a
             href="/"
-            className="text-2xl font-bold tracking-tight text-gray-950"
+            className="shrink-0 text-xl font-bold tracking-tight text-gray-950 sm:text-2xl"
           >
             Random Picks NG
           </a>
 
-          <div className="flex items-center gap-6 text-sm font-medium">
+          {/* Desktop navigation */}
+          <div className="hidden items-center gap-6 text-sm font-medium md:flex">
             <a
               href="/"
-              className="text-gray-700 hover:text-black"
+              className="text-gray-700 transition hover:text-black"
             >
               Home
             </a>
 
             <a
               href="/#products"
-              className="text-gray-700 hover:text-black"
+              className="text-gray-700 transition hover:text-black"
             >
               Products
             </a>
@@ -175,81 +238,136 @@ export default function TrackOrderPage() {
 
             <a
               href="/#about"
-              className="text-gray-700 hover:text-black"
+              className="text-gray-700 transition hover:text-black"
             >
               About
             </a>
 
             <a
               href="/#products"
-              className="rounded-lg bg-black px-5 py-2.5 text-white hover:bg-gray-800"
+              className="rounded-lg bg-black px-5 py-2.5 text-white transition hover:bg-gray-800"
             >
               Shop Now
+            </a>
+          </div>
+
+          {/* Mobile navigation */}
+          <a
+            href="/#products"
+            className="rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 md:hidden"
+          >
+            Shop
+          </a>
+        </div>
+
+        {/* Mobile links */}
+        <div className="border-t border-gray-100 px-4 py-3 md:hidden">
+          <div className="grid grid-cols-4 gap-2 text-center text-xs font-medium">
+            <a
+              href="/"
+              className="rounded-lg px-2 py-2 text-gray-600 hover:bg-gray-100"
+            >
+              Home
+            </a>
+
+            <a
+              href="/#products"
+              className="rounded-lg px-2 py-2 text-gray-600 hover:bg-gray-100"
+            >
+              Products
+            </a>
+
+            <a
+              href="/track-order"
+              className="rounded-lg bg-gray-100 px-2 py-2 font-semibold text-black"
+            >
+              Track
+            </a>
+
+            <a
+              href="/#about"
+              className="rounded-lg px-2 py-2 text-gray-600 hover:bg-gray-100"
+            >
+              About
             </a>
           </div>
         </div>
       </nav>
 
       {/* Main */}
-      <section className="mx-auto max-w-5xl px-6 py-16">
+      <section className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-16">
         <div className="mx-auto max-w-2xl text-center">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-gray-500">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 sm:mb-3 sm:text-sm">
             Order Tracking
           </p>
 
-          <h1 className="text-4xl font-bold tracking-tight">
+          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
             Track Your Order
           </h1>
 
-          <p className="mt-4 text-gray-600">
-            Enter your order number and phone number to see your
-            order status.
+          <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-gray-600 sm:mt-4 sm:text-base">
+            Enter your order number and phone number to see your order status.
           </p>
         </div>
 
         {/* Search Form */}
-        <div className="mx-auto mt-10 max-w-2xl rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Order Number
-              </label>
-
-              <input
-                type="text"
-                value={orderId}
-                onChange={(e) => setOrderId(e.target.value)}
-                placeholder="e.g. 12"
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-black"
-              />
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Phone Number
-              </label>
-
-              <input
-                type="text"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="Phone number used for order"
-                className="w-full rounded-lg border border-gray-300 px-4 py-3 outline-none transition focus:border-black"
-              />
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={searchOrder}
-            disabled={loading}
-            className="mt-5 w-full rounded-lg bg-black px-5 py-3 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="mx-auto mt-8 w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:mt-10 sm:p-6">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              searchOrder();
+            }}
           >
-            {loading ? "Checking..." : "Track Order"}
-          </button>
+            <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Order Number
+                </label>
+
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={orderId}
+                  onChange={(e) => {
+                    setOrderId(e.target.value);
+                    setError("");
+                  }}
+                  placeholder="e.g. 12"
+                  className="w-full min-w-0 rounded-xl border border-gray-300 px-4 py-3.5 text-base outline-none transition focus:border-black focus:ring-1 focus:ring-black"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">
+                  Phone Number
+                </label>
+
+                <input
+                  type="tel"
+                  inputMode="tel"
+                  autoComplete="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    setError("");
+                  }}
+                  placeholder="Phone number used for order"
+                  className="w-full min-w-0 rounded-xl border border-gray-300 px-4 py-3.5 text-base outline-none transition focus:border-black focus:ring-1 focus:ring-black"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-4 w-full rounded-xl bg-black px-5 py-3.5 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-5"
+            >
+              {loading ? "Checking..." : "Track Order"}
+            </button>
+          </form>
 
           {error && (
-            <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-600">
+            <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm leading-5 text-red-600">
               {error}
             </p>
           )}
@@ -257,9 +375,9 @@ export default function TrackOrderPage() {
 
         {/* Order Result */}
         {order && (
-          <div className="mx-auto mt-10 max-w-4xl">
+          <div className="mx-auto mt-8 w-full max-w-4xl sm:mt-10">
             {/* Order Header */}
-            <div className="mb-6 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:mb-6 sm:p-5 md:flex-row md:items-center md:justify-between">
               <div>
                 <p className="text-sm text-gray-500">
                   Order Number
@@ -270,7 +388,7 @@ export default function TrackOrderPage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center justify-between gap-3 md:justify-end">
                 {refreshing && (
                   <span className="text-xs text-gray-500">
                     Updating...
@@ -278,7 +396,7 @@ export default function TrackOrderPage() {
                 )}
 
                 <span
-                  className={`rounded-full px-4 py-2 text-sm font-semibold ${
+                  className={`rounded-full px-3 py-2 text-xs font-semibold sm:px-4 sm:text-sm ${
                     order.status === "cancelled"
                       ? "bg-red-100 text-red-700"
                       : order.status === "delivered"
@@ -294,7 +412,7 @@ export default function TrackOrderPage() {
 
             {/* Cancelled */}
             {order.status === "cancelled" ? (
-              <div className="rounded-2xl border border-red-200 bg-red-50 p-8 text-center">
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center sm:p-8">
                 <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-xl text-red-600">
                   ×
                 </div>
@@ -303,16 +421,16 @@ export default function TrackOrderPage() {
                   Order Cancelled
                 </h2>
 
-                <p className="mt-2 text-sm text-red-700">
-                  This order has been cancelled. Please contact
-                  Random Picks NG if you have any questions.
+                <p className="mt-2 text-sm leading-6 text-red-700">
+                  This order has been cancelled. Please contact Random Picks NG
+                  if you have any questions.
                 </p>
               </div>
             ) : (
               <>
                 {/* Status Timeline */}
-                <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-                  <div className="mb-8 flex items-center justify-between">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
+                  <div className="mb-7 flex flex-col gap-2 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <h2 className="text-xl font-bold">
                         Order Status
@@ -330,7 +448,7 @@ export default function TrackOrderPage() {
                     )}
                   </div>
 
-                  <div className="space-y-7">
+                  <div className="space-y-6 sm:space-y-7">
                     {statuses.map((status, index) => {
                       const completed =
                         index <= currentStatusIndex;
@@ -341,7 +459,7 @@ export default function TrackOrderPage() {
                       return (
                         <div
                           key={status.key}
-                          className="relative flex gap-4"
+                          className="relative flex min-w-0 gap-3 sm:gap-4"
                         >
                           {index !== statuses.length - 1 && (
                             <div
@@ -363,7 +481,7 @@ export default function TrackOrderPage() {
                             {completed ? "✓" : index + 1}
                           </div>
 
-                          <div className="pt-0.5">
+                          <div className="min-w-0 pt-0.5">
                             <h3
                               className={`font-semibold ${
                                 active
@@ -376,7 +494,7 @@ export default function TrackOrderPage() {
                               {status.title}
                             </h3>
 
-                            <p className="mt-1 text-sm text-gray-500">
+                            <p className="mt-1 text-sm leading-5 text-gray-500">
                               {status.description}
                             </p>
                           </div>
@@ -386,20 +504,21 @@ export default function TrackOrderPage() {
                   </div>
                 </div>
 
-                {/* Product Details */}
-                <div className="mt-6 grid gap-6 md:grid-cols-2">
-                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                {/* Product + Delivery */}
+                <div className="mt-5 grid gap-5 md:grid-cols-2 md:gap-6">
+                  {/* Product Details */}
+                  <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
                     <h2 className="mb-5 text-xl font-bold">
                       Product Details
                     </h2>
 
                     <div className="space-y-4 text-sm">
-                      <div className="flex justify-between gap-4">
+                      <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-4">
                         <span className="text-gray-500">
                           Product
                         </span>
 
-                        <span className="text-right font-medium">
+                        <span className="min-w-0 break-words text-right font-medium">
                           {order.product_name}
                         </span>
                       </div>
@@ -433,7 +552,7 @@ export default function TrackOrderPage() {
                             Type
                           </span>
 
-                          <span className="font-medium">
+                          <span className="break-words text-right font-medium">
                             {order.product_type}
                           </span>
                         </div>
@@ -445,7 +564,7 @@ export default function TrackOrderPage() {
                             Color
                           </span>
 
-                          <span className="font-medium">
+                          <span className="break-words text-right font-medium">
                             {order.color}
                           </span>
                         </div>
@@ -466,7 +585,7 @@ export default function TrackOrderPage() {
                   </div>
 
                   {/* Delivery Information */}
-                  <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
+                  <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
                     <h2 className="mb-5 text-xl font-bold">
                       Delivery Information
                     </h2>
@@ -477,7 +596,7 @@ export default function TrackOrderPage() {
                           Customer
                         </p>
 
-                        <p className="mt-1 font-medium">
+                        <p className="mt-1 break-words font-medium">
                           {order.customer_name}
                         </p>
                       </div>
@@ -487,7 +606,7 @@ export default function TrackOrderPage() {
                           Phone
                         </p>
 
-                        <p className="mt-1 font-medium">
+                        <p className="mt-1 break-words font-medium">
                           {order.phone}
                         </p>
                       </div>
@@ -497,7 +616,7 @@ export default function TrackOrderPage() {
                           Location
                         </p>
 
-                        <p className="mt-1 font-medium">
+                        <p className="mt-1 break-words font-medium">
                           {order.city}, {order.state}
                         </p>
                       </div>
@@ -507,7 +626,7 @@ export default function TrackOrderPage() {
                           Address
                         </p>
 
-                        <p className="mt-1 font-medium">
+                        <p className="mt-1 break-words font-medium">
                           {order.address}
                         </p>
                       </div>
@@ -516,28 +635,24 @@ export default function TrackOrderPage() {
                 </div>
 
                 {/* Order Dates */}
-                <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-5">
-                  <div className="flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:mt-6 sm:p-5">
+                  <div className="flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                     <span className="text-gray-500">
                       Order placed
                     </span>
 
-                    <span className="font-medium">
-                      {new Date(
-                        order.created_at
-                      ).toLocaleString()}
+                    <span className="break-words font-medium sm:text-right">
+                      {new Date(order.created_at).toLocaleString()}
                     </span>
                   </div>
 
-                  <div className="mt-2 flex flex-col gap-2 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <div className="mt-3 flex flex-col gap-1 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                     <span className="text-gray-500">
                       Last updated
                     </span>
 
-                    <span className="font-medium">
-                      {new Date(
-                        order.updated_at
-                      ).toLocaleString()}
+                    <span className="break-words font-medium sm:text-right">
+                      {new Date(order.updated_at).toLocaleString()}
                     </span>
                   </div>
                 </div>
@@ -549,8 +664,10 @@ export default function TrackOrderPage() {
               onClick={() => {
                 setOrder(null);
                 setError("");
+                setOrderId("");
+                setPhone("");
               }}
-              className="mt-6 w-full rounded-lg border border-gray-300 px-5 py-3 font-semibold text-gray-800 hover:bg-gray-50"
+              className="mt-5 w-full rounded-xl border border-gray-300 px-5 py-3.5 font-semibold text-gray-800 transition hover:bg-gray-50"
             >
               Track Another Order
             </button>
@@ -560,11 +677,10 @@ export default function TrackOrderPage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-gray-50">
-        <div className="mx-auto max-w-7xl px-6 py-8">
-          <div className="flex flex-col gap-3 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-8">
+          <div className="flex flex-col gap-2 text-center text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:text-sm">
             <p>
-              © {new Date().getFullYear()} Random Picks NG.
-              All rights reserved.
+              © {new Date().getFullYear()} Random Picks NG. All rights reserved.
             </p>
 
             <p>
