@@ -1,7 +1,7 @@
+
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 
 type Order = {
   id: number;
@@ -49,48 +49,6 @@ const statuses = [
   },
 ];
 
-/*
- * Reduces any Nigerian phone number to a clean local format (0XXXXXXXXXX).
- *
- * Strips EVERYTHING that is not a digit — spaces, +, (), -, dots, and the
- * invisible Unicode marks (left-to-right / right-to-left marks, non-breaking
- * spaces) that mobile keyboards and contact autofill silently insert. Those
- * invisible characters are the usual reason a lookup works on desktop but
- * fails on a phone.
- */
-function normalizePhone(value: string) {
-  let digits = value.replace(/\D/g, "");
-
-  // International format -> local
-  if (digits.startsWith("234")) {
-    digits = "0" + digits.slice(3);
-  }
-
-  // Typed without the leading 0
-  if (digits.length === 10) {
-    digits = "0" + digits;
-  }
-
-  return digits;
-}
-
-/*
- * Every common way the same number could be stored, so the lookup matches
- * whatever format was used at checkout — while still filtering by phone on
- * the server (so an order can't be fetched by guessing its ID alone).
- */
-function phoneVariants(value: string) {
-  const local = normalizePhone(value); // 08012345678
-  const bare = local.startsWith("0") ? local.slice(1) : local; // 8012345678
-
-  return [...new Set([
-    local, // 08012345678
-    bare, // 8012345678
-    "234" + bare, // 2348012345678
-    "+234" + bare, // +2348012345678
-  ])];
-}
-
 export default function TrackOrderPage() {
   const [orderId, setOrderId] = useState("");
   const [phone, setPhone] = useState("");
@@ -114,33 +72,36 @@ export default function TrackOrderPage() {
 
     setLoading(true);
     setError("");
+    setOrder(null);
 
-    /*
-     * Match the order id together with any common format of the entered
-     * phone number. Filtering by phone on the server keeps order details
-     * private (an order can't be pulled by guessing its id alone), while
-     * the variants make the match tolerant of mobile keyboard / autofill
-     * quirks.
-     */
-    const result = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", numericOrderId)
-      .in("phone", phoneVariants(phone))
-      .maybeSingle();
+    try {
+      const response = await fetch("/api/track-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId: numericOrderId,
+          phone: phone.trim(),
+        }),
+      });
 
-    if (result.error) {
-      console.error("Order search error:", result.error);
+      const result = await response.json();
+
+      if (!response.ok) {
+        setError(
+          result.error || "No order was found with those details."
+        );
+        return;
+      }
+
+      setOrder(result.order as Order);
+    } catch (error) {
+      console.error("Order search error:", error);
       setError("Something went wrong while checking your order.");
-      setOrder(null);
-    } else if (!result.data) {
-      setError("No order was found with those details.");
-      setOrder(null);
-    } else {
-      setOrder(result.data as Order);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }
 
   async function refreshOrder() {
@@ -148,28 +109,42 @@ export default function TrackOrderPage() {
 
     setRefreshing(true);
 
-    /*
-     * order.phone is already the exact value stored in the database,
-     * so we can match it directly.
-     */
-    const result = await supabase
-      .from("orders")
-      .select("*")
-      .eq("id", order.id)
-      .eq("phone", order.phone)
-      .maybeSingle();
+    try {
+      const response = await fetch("/api/track-order", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          orderId: order.id,
+          phone: order.phone,
+        }),
+      });
 
-    if (result.error) {
-      console.error("Order refresh error:", result.error);
-    } else if (result.data) {
-      setOrder(result.data as Order);
+      const result = await response.json();
+
+      if (response.ok && result.order) {
+        setOrder(result.order as Order);
+      } else if (!response.ok) {
+        console.error("Order refresh error:", result.error);
+      }
+    } catch (error) {
+      console.error("Order refresh error:", error);
+    } finally {
+      setRefreshing(false);
     }
-
-    setRefreshing(false);
   }
 
   useEffect(() => {
     if (!order) return;
+
+    // Delivered and cancelled orders do not need continuous polling.
+    if (
+      order.status === "delivered" ||
+      order.status === "cancelled"
+    ) {
+      return;
+    }
 
     const interval = window.setInterval(() => {
       refreshOrder();
@@ -178,7 +153,7 @@ export default function TrackOrderPage() {
     return () => {
       window.clearInterval(interval);
     };
-  }, [order?.id]);
+  }, [order?.id, order?.status]);
 
   function getStatusIndex(status: string) {
     return statuses.findIndex((item) => item.key === status);
@@ -311,13 +286,19 @@ export default function TrackOrderPage() {
           >
             <div className="grid gap-4 sm:grid-cols-2 sm:gap-5">
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="order-number"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
                   Order Number
                 </label>
 
                 <input
+                  id="order-number"
+                  name="order-number"
                   type="text"
                   inputMode="numeric"
+                  autoComplete="off"
                   value={orderId}
                   onChange={(e) => {
                     setOrderId(e.target.value);
@@ -329,11 +310,16 @@ export default function TrackOrderPage() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="phone-number"
+                  className="mb-2 block text-sm font-medium text-gray-700"
+                >
                   Phone Number
                 </label>
 
                 <input
+                  id="phone-number"
+                  name="phone-number"
                   type="tel"
                   inputMode="tel"
                   autoComplete="tel"
