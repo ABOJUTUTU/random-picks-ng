@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { supabase } from "@/lib/supabase";
 
 export default async function HomePage() {
@@ -165,9 +167,9 @@ export default async function HomePage() {
       {/* Products */}
       <section
         id="products"
-        className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20"
+        className="mx-auto max-w-7xl px-3 py-12 sm:px-6 sm:py-20"
       >
-        <div className="mb-8 sm:mb-10">
+        <div className="mb-7 sm:mb-10">
           <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 sm:text-sm">
             Our Products
           </p>
@@ -178,14 +180,14 @@ export default async function HomePage() {
         </div>
 
         {products && products.length > 0 ? (
-          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-8 lg:grid-cols-4">
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-8 lg:grid-cols-4">
             {products.map((product) => (
               <div
                 key={product.id}
-                className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg sm:rounded-2xl"
               >
                 {/* Product Image */}
-                <div className="flex h-72 w-full items-center justify-center overflow-hidden bg-gray-100 sm:h-64">
+                <div className="flex h-32 w-full items-center justify-center overflow-hidden bg-gray-100 sm:h-64">
                   {product.images &&
                   product.images.length > 0 &&
                   product.images[0] ? (
@@ -196,30 +198,29 @@ export default async function HomePage() {
                       className="h-full w-full object-cover"
                     />
                   ) : (
-                    <span className="text-sm text-gray-400">
+                    <span className="px-1 text-center text-[9px] text-gray-400 sm:text-sm">
                       Product Image
                     </span>
                   )}
                 </div>
 
                 {/* Product Information */}
-                <div className="p-5 sm:p-6">
-                  <h3 className="text-xl font-bold text-gray-950">
+                <div className="p-2 sm:p-6">
+                  <h3 className="line-clamp-2 text-sm font-bold text-gray-950 sm:text-xl">
                     {product.name}
                   </h3>
 
-                  <p className="mt-2 line-clamp-2 text-sm leading-6 text-gray-600">
-                    {product.description ||
-                      "No description provided."}
+                  <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-gray-600 sm:mt-2 sm:text-sm sm:leading-6">
+                    {product.description || "No description provided."}
                   </p>
 
-                  <p className="mt-4 text-xl font-bold text-gray-950">
+                  <p className="mt-2 text-sm font-bold text-gray-950 sm:mt-4 sm:text-xl">
                     ₦{Number(product.price).toLocaleString()}
                   </p>
 
                   <a
                     href={`/product/${product.id}`}
-                    className="mt-5 block rounded-lg bg-black px-4 py-3 text-center font-semibold text-white transition hover:bg-gray-800"
+                    className="mt-3 block rounded-md bg-black px-2 py-2 text-center text-[10px] font-semibold text-white transition hover:bg-gray-800 sm:mt-5 sm:rounded-lg sm:px-4 sm:py-3 sm:text-base"
                   >
                     View Product
                   </a>
