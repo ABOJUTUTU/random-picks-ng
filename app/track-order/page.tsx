@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -138,7 +137,6 @@ export default function TrackOrderPage() {
   useEffect(() => {
     if (!order) return;
 
-    // Delivered and cancelled orders do not need continuous polling.
     if (
       order.status === "delivered" ||
       order.status === "cancelled"
@@ -167,60 +165,75 @@ export default function TrackOrderPage() {
     ? Number(order.product_price) * order.quantity
     : 0;
 
+  function resetTracking() {
+    setOrder(null);
+    setError("");
+    setOrderId("");
+    setPhone("");
+  }
+
   return (
-    <main className="min-h-screen overflow-x-hidden bg-white text-gray-950">
+    <main className="min-h-screen overflow-x-hidden bg-white text-[#071a3d]">
       {/* Navbar */}
       <nav className="border-b border-gray-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 sm:py-5">
           <a
             href="/"
-            className="shrink-0 text-xl font-bold tracking-tight text-gray-950 sm:text-2xl"
+            className="flex items-center gap-3 transition hover:opacity-80"
           >
-            Random Picks NG
+            <img
+              src="/rplogo.png"
+              alt="Random Picks NG"
+              className="h-10 w-10 rounded-full object-cover sm:h-11 sm:w-11"
+            />
+
+            <span className="text-xl font-bold tracking-tight text-[#071a3d] sm:text-2xl">
+              Random Picks NG
+            </span>
           </a>
 
           {/* Desktop navigation */}
           <div className="hidden items-center gap-6 text-sm font-medium md:flex">
             <a
               href="/"
-              className="text-gray-700 transition hover:text-black"
+              className="text-gray-700 transition hover:text-[#ff7800]"
             >
               Home
             </a>
 
             <a
               href="/#products"
-              className="text-gray-700 transition hover:text-black"
+              className="text-gray-700 transition hover:text-[#ff7800]"
             >
               Products
             </a>
 
             <a
               href="/track-order"
-              className="font-semibold text-black"
+              className="font-semibold text-[#ff7800]"
             >
               Track Order
             </a>
 
             <a
               href="/#about"
-              className="text-gray-700 transition hover:text-black"
+              className="text-gray-700 transition hover:text-[#ff7800]"
             >
               About
             </a>
 
             <a
               href="/#products"
-              className="rounded-lg bg-black px-5 py-2.5 text-white transition hover:bg-gray-800"
+              className="rounded-lg bg-[#071a3d] px-5 py-2.5 text-white transition duration-300 hover:bg-[#ff7800]"
             >
               Shop Now
             </a>
           </div>
 
-          {/* Mobile navigation */}
+          {/* Mobile shop button */}
           <a
             href="/#products"
-            className="rounded-lg bg-black px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-gray-800 md:hidden"
+            className="rounded-lg bg-[#071a3d] px-4 py-2.5 text-sm font-semibold text-white transition duration-300 hover:bg-[#ff7800] md:hidden"
           >
             Shop
           </a>
@@ -231,28 +244,28 @@ export default function TrackOrderPage() {
           <div className="grid grid-cols-4 gap-2 text-center text-xs font-medium">
             <a
               href="/"
-              className="rounded-lg px-2 py-2 text-gray-600 hover:bg-gray-100"
+              className="rounded-lg px-2 py-2 text-gray-600 transition hover:bg-gray-100 hover:text-[#ff7800]"
             >
               Home
             </a>
 
             <a
               href="/#products"
-              className="rounded-lg px-2 py-2 text-gray-600 hover:bg-gray-100"
+              className="rounded-lg px-2 py-2 text-gray-600 transition hover:bg-gray-100 hover:text-[#ff7800]"
             >
               Products
             </a>
 
             <a
               href="/track-order"
-              className="rounded-lg bg-gray-100 px-2 py-2 font-semibold text-black"
+              className="rounded-lg bg-orange-50 px-2 py-2 font-semibold text-[#ff7800]"
             >
               Track
             </a>
 
             <a
               href="/#about"
-              className="rounded-lg px-2 py-2 text-gray-600 hover:bg-gray-100"
+              className="rounded-lg px-2 py-2 text-gray-600 transition hover:bg-gray-100 hover:text-[#ff7800]"
             >
               About
             </a>
@@ -262,25 +275,27 @@ export default function TrackOrderPage() {
 
       {/* Main */}
       <section className="mx-auto w-full max-w-5xl px-4 py-10 sm:px-6 sm:py-16">
-        <div className="mx-auto max-w-2xl text-center">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 sm:mb-3 sm:text-sm">
+        {/* Heading */}
+        <div className="mx-auto max-w-2xl text-center animate-[fadeIn_0.6s_ease-out]">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-[#ff7800] sm:mb-3 sm:text-sm">
             Order Tracking
           </p>
 
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+          <h1 className="text-3xl font-bold tracking-tight text-[#071a3d] sm:text-4xl">
             Track Your Order
           </h1>
 
           <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-gray-600 sm:mt-4 sm:text-base">
-            Enter your order number and phone number to see your order status.
+            Enter your order number and phone number to see your
+            order status.
           </p>
         </div>
 
         {/* Search Form */}
-        <div className="mx-auto mt-8 w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:mt-10 sm:p-6">
+        <div className="mx-auto mt-8 w-full max-w-2xl rounded-2xl border border-gray-200 bg-white p-4 shadow-sm animate-[fadeUp_0.6s_ease-out] sm:mt-10 sm:p-6">
           <form
-            onSubmit={(e) => {
-              e.preventDefault();
+            onSubmit={(event) => {
+              event.preventDefault();
               searchOrder();
             }}
           >
@@ -288,7 +303,7 @@ export default function TrackOrderPage() {
               <div>
                 <label
                   htmlFor="order-number"
-                  className="mb-2 block text-sm font-medium text-gray-700"
+                  className="mb-2 block text-sm font-semibold text-[#071a3d]"
                 >
                   Order Number
                 </label>
@@ -300,19 +315,19 @@ export default function TrackOrderPage() {
                   inputMode="numeric"
                   autoComplete="off"
                   value={orderId}
-                  onChange={(e) => {
-                    setOrderId(e.target.value);
+                  onChange={(event) => {
+                    setOrderId(event.target.value);
                     setError("");
                   }}
                   placeholder="e.g. 12"
-                  className="w-full min-w-0 rounded-xl border border-gray-300 px-4 py-3.5 text-base outline-none transition focus:border-black focus:ring-1 focus:ring-black"
+                  className="w-full min-w-0 rounded-xl border border-gray-300 px-4 py-3.5 text-base outline-none transition focus:border-[#ff7800] focus:ring-2 focus:ring-[#ff7800]/10"
                 />
               </div>
 
               <div>
                 <label
                   htmlFor="phone-number"
-                  className="mb-2 block text-sm font-medium text-gray-700"
+                  className="mb-2 block text-sm font-semibold text-[#071a3d]"
                 >
                   Phone Number
                 </label>
@@ -324,12 +339,12 @@ export default function TrackOrderPage() {
                   inputMode="tel"
                   autoComplete="tel"
                   value={phone}
-                  onChange={(e) => {
-                    setPhone(e.target.value);
+                  onChange={(event) => {
+                    setPhone(event.target.value);
                     setError("");
                   }}
                   placeholder="Phone number used for order"
-                  className="w-full min-w-0 rounded-xl border border-gray-300 px-4 py-3.5 text-base outline-none transition focus:border-black focus:ring-1 focus:ring-black"
+                  className="w-full min-w-0 rounded-xl border border-gray-300 px-4 py-3.5 text-base outline-none transition focus:border-[#ff7800] focus:ring-2 focus:ring-[#ff7800]/10"
                 />
               </div>
             </div>
@@ -337,22 +352,22 @@ export default function TrackOrderPage() {
             <button
               type="submit"
               disabled={loading}
-              className="mt-4 w-full rounded-xl bg-black px-5 py-3.5 font-semibold text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-60 sm:mt-5"
+              className="mt-4 w-full rounded-xl bg-[#071a3d] px-5 py-3.5 font-semibold text-white shadow-sm transition duration-300 hover:-translate-y-0.5 hover:bg-[#ff7800] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60 sm:mt-5"
             >
               {loading ? "Checking..." : "Track Order"}
             </button>
           </form>
 
           {error && (
-            <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm leading-5 text-red-600">
+            <div className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm leading-5 text-red-600">
               {error}
-            </p>
+            </div>
           )}
         </div>
 
         {/* Order Result */}
         {order && (
-          <div className="mx-auto mt-8 w-full max-w-4xl sm:mt-10">
+          <div className="mx-auto mt-8 w-full max-w-4xl animate-[fadeUp_0.5s_ease-out] sm:mt-10">
             {/* Order Header */}
             <div className="mb-5 flex flex-col gap-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:mb-6 sm:p-5 md:flex-row md:items-center md:justify-between">
               <div>
@@ -360,7 +375,7 @@ export default function TrackOrderPage() {
                   Order Number
                 </p>
 
-                <p className="text-2xl font-bold">
+                <p className="mt-1 text-2xl font-bold text-[#071a3d]">
                   #{order.id}
                 </p>
               </div>
@@ -378,7 +393,7 @@ export default function TrackOrderPage() {
                       ? "bg-red-100 text-red-700"
                       : order.status === "delivered"
                       ? "bg-green-100 text-green-700"
-                      : "bg-gray-200 text-gray-800"
+                      : "bg-orange-50 text-[#ff7800]"
                   }`}
                 >
                   {order.status.charAt(0).toUpperCase() +
@@ -390,7 +405,7 @@ export default function TrackOrderPage() {
             {/* Cancelled */}
             {order.status === "cancelled" ? (
               <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center sm:p-8">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-xl text-red-600">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-xl font-bold text-red-600">
                   ×
                 </div>
 
@@ -399,8 +414,8 @@ export default function TrackOrderPage() {
                 </h2>
 
                 <p className="mt-2 text-sm leading-6 text-red-700">
-                  This order has been cancelled. Please contact Random Picks NG
-                  if you have any questions.
+                  This order has been cancelled. Please contact
+                  Random Picks NG if you have any questions.
                 </p>
               </div>
             ) : (
@@ -409,7 +424,7 @@ export default function TrackOrderPage() {
                 <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
                   <div className="mb-7 flex flex-col gap-2 sm:mb-8 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <h2 className="text-xl font-bold">
+                      <h2 className="text-xl font-bold text-[#071a3d]">
                         Order Status
                       </h2>
 
@@ -442,16 +457,16 @@ export default function TrackOrderPage() {
                             <div
                               className={`absolute left-4 top-9 h-full w-px ${
                                 index < currentStatusIndex
-                                  ? "bg-black"
+                                  ? "bg-[#ff7800]"
                                   : "bg-gray-200"
                               }`}
                             />
                           )}
 
                           <div
-                            className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                            className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition duration-300 ${
                               completed
-                                ? "bg-black text-white"
+                                ? "bg-[#071a3d] text-white"
                                 : "bg-gray-200 text-gray-500"
                             }`}
                           >
@@ -462,9 +477,9 @@ export default function TrackOrderPage() {
                             <h3
                               className={`font-semibold ${
                                 active
-                                  ? "text-black"
+                                  ? "text-[#ff7800]"
                                   : completed
-                                  ? "text-gray-800"
+                                  ? "text-[#071a3d]"
                                   : "text-gray-400"
                               }`}
                             >
@@ -485,7 +500,7 @@ export default function TrackOrderPage() {
                 <div className="mt-5 grid gap-5 md:grid-cols-2 md:gap-6">
                   {/* Product Details */}
                   <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-                    <h2 className="mb-5 text-xl font-bold">
+                    <h2 className="mb-5 text-xl font-bold text-[#071a3d]">
                       Product Details
                     </h2>
 
@@ -495,7 +510,7 @@ export default function TrackOrderPage() {
                           Product
                         </span>
 
-                        <span className="min-w-0 break-words text-right font-medium">
+                        <span className="min-w-0 break-words text-right font-medium text-[#071a3d]">
                           {order.product_name}
                         </span>
                       </div>
@@ -549,11 +564,11 @@ export default function TrackOrderPage() {
 
                       <div className="border-t border-gray-200 pt-4">
                         <div className="flex justify-between gap-4">
-                          <span className="font-semibold">
+                          <span className="font-semibold text-[#071a3d]">
                             Total
                           </span>
 
-                          <span className="text-lg font-bold">
+                          <span className="text-lg font-bold text-[#ff7800]">
                             ₦{total.toLocaleString()}
                           </span>
                         </div>
@@ -563,7 +578,7 @@ export default function TrackOrderPage() {
 
                   {/* Delivery Information */}
                   <div className="min-w-0 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm sm:p-6">
-                    <h2 className="mb-5 text-xl font-bold">
+                    <h2 className="mb-5 text-xl font-bold text-[#071a3d]">
                       Delivery Information
                     </h2>
 
@@ -619,7 +634,9 @@ export default function TrackOrderPage() {
                     </span>
 
                     <span className="break-words font-medium sm:text-right">
-                      {new Date(order.created_at).toLocaleString()}
+                      {new Date(
+                        order.created_at
+                      ).toLocaleString()}
                     </span>
                   </div>
 
@@ -629,22 +646,20 @@ export default function TrackOrderPage() {
                     </span>
 
                     <span className="break-words font-medium sm:text-right">
-                      {new Date(order.updated_at).toLocaleString()}
+                      {new Date(
+                        order.updated_at
+                      ).toLocaleString()}
                     </span>
                   </div>
                 </div>
               </>
             )}
 
+            {/* Track Another Order */}
             <button
               type="button"
-              onClick={() => {
-                setOrder(null);
-                setError("");
-                setOrderId("");
-                setPhone("");
-              }}
-              className="mt-5 w-full rounded-xl border border-gray-300 px-5 py-3.5 font-semibold text-gray-800 transition hover:bg-gray-50"
+              onClick={resetTracking}
+              className="mt-5 w-full rounded-xl border border-gray-300 px-5 py-3.5 font-semibold text-[#071a3d] transition duration-300 hover:border-[#ff7800] hover:bg-orange-50 hover:text-[#ff7800]"
             >
               Track Another Order
             </button>
@@ -654,18 +669,47 @@ export default function TrackOrderPage() {
 
       {/* Footer */}
       <footer className="border-t border-gray-200 bg-gray-50">
-        <div className="mx-auto max-w-7xl px-4 py-7 sm:px-6 sm:py-8">
-          <div className="flex flex-col gap-2 text-center text-xs text-gray-500 sm:flex-row sm:items-center sm:justify-between sm:text-sm">
-            <p>
-              © {new Date().getFullYear()} Random Picks NG. All rights reserved.
-            </p>
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-center gap-3 px-4 py-7 text-center sm:px-6 sm:py-8">
+          <img
+            src="/rplogo.png"
+            alt="Random Picks NG"
+            className="h-10 w-10 rounded-full object-cover"
+          />
 
-            <p>
-              Shop smarter. Pick randomly. Love your choice.
-            </p>
-          </div>
+          <p className="text-xs text-gray-600 sm:text-sm">
+            © {new Date().getFullYear()} Random Picks NG. All
+            rights reserved.
+          </p>
+
+          <p className="text-xs text-gray-500 sm:text-sm">
+            Shop smarter. Pick randomly. Love your choice.
+          </p>
         </div>
       </footer>
+
+      <style>{`
+        @keyframes fadeIn {
+          from {
+            opacity: 0;
+            transform: translateY(12px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @keyframes fadeUp {
+          from {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </main>
   );
 }
