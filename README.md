@@ -21,6 +21,8 @@ Catalog replies work without an AI account. To enable optional AI phrasing, conf
 
 The integration adds `app/components/shopping-assistant.tsx`, its CSS module, `lib/shop-assistant.ts`, and `app/api/chat/route.ts`. The root layout renders the widget after the page content. No database migration or additional package is required. Keep the store’s existing environment variables in Vercel; add the optional OpenAI variables only if desired.
 
+Preview builds need only the public catalog credentials for the storefront and chatbot. The existing tracking and email routes check their server credentials when called and return a temporary-unavailable response if those credentials are absent. Production-only service credentials can stay scoped to production.
+
 Chat history is kept in memory for the current tab, limited before being sent, and cleared with **Clear conversation** or a page reload. The chat does not send support emails or place orders; its links take visitors to the relevant existing flow. The route includes input limits, upstream timeouts, and a bounded in-memory request limiter. The limiter is per server process; use hosting-level rate limits if shared limits across serverless instances are needed.
 
 ### Checks
