@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
 type Order = {
   id: number;
   product_id: number | null;
@@ -612,6 +607,27 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!message && !html) {
+      return NextResponse.json(
+        { error: "Email content is required." },
+        { status: 400 }
+      );
+    }
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const brevoApiKey = process.env.BREVO_API_KEY;
+    const senderEmail = process.env.BREVO_SENDER_EMAIL;
+
+    if (!supabaseUrl || !serviceRoleKey || !brevoApiKey || !senderEmail) {
+      return NextResponse.json(
+        { error: "Email service is temporarily unavailable. Please try again later." },
+        { status: 503 }
+      );
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey);
+
     let productImage = "";
 
     /*
@@ -676,22 +692,6 @@ export async function POST(request: Request) {
           error: "Email content is required.",
         },
         { status: 400 }
-      );
-    }
-
-    const brevoApiKey =
-      process.env.BREVO_API_KEY;
-
-    const senderEmail =
-      process.env.BREVO_SENDER_EMAIL;
-
-    if (!brevoApiKey || !senderEmail) {
-      return NextResponse.json(
-        {
-          error:
-            "Email service is not configured.",
-        },
-        { status: 500 }
       );
     }
 
