@@ -30,7 +30,8 @@ export type CatalogProduct = Omit<ChatProduct, "image" | "href"> & {
 };
 
 type Budget = { min?: number; max?: number; strictMin?: boolean; strictMax?: boolean };
-type Search = { terms: string[]; colors: string[]; budget: Budget; cheapest: boolean };
+export type CatalogSearch = { terms: string[]; colors: string[]; budget: Budget; cheapest: boolean };
+type Search = CatalogSearch;
 
 export const MAX_MESSAGE_LENGTH = 600;
 const support = { label: "Email support", href: "mailto:randompicksng@gmail.com" };
@@ -172,7 +173,7 @@ function updateSearch(previous: Search, message: string, catalog: CatalogProduct
     cheapest: /\b(cheap|cheaper|cheapest|affordable|lowest)\b/i.test(message) || previous.cheapest,
   };
 }
-function matches(catalog: CatalogProduct[], search: Search): CatalogProduct[] {
+export function getCatalogMatches(catalog: CatalogProduct[], search: CatalogSearch): CatalogProduct[] {
   return catalog.filter((product) => {
     const tokens = words([product.name, product.description, ...product.types].join(" "));
     return search.terms.every((term) => tokens.some((token) => token === term || (term.length >= 4 && token.startsWith(term)))) &&
@@ -184,27 +185,32 @@ function matches(catalog: CatalogProduct[], search: Search): CatalogProduct[] {
 
 function naira(value: number): string { return `₦${value.toLocaleString("en-NG", { maximumFractionDigits: 2 })}`; }
 
-function categoryTerms(product: CatalogProduct): string[] {
+export function getProductCategoryTerms(product: CatalogProduct): string[] {
   const categories = new Set(["watch", "shoe", "headphone", "earphone", "earbud", "speaker", "phone", "laptop", "charger", "bag", "shirt", "dress"]);
   return [...new Set(words([product.name, ...product.types].join(" "))
     .map((word) => categories.has(word) ? word : word.replace(/s$/, "")).filter((word) => categories.has(word)))];
 }
 
-export function createShopReply(request: ChatRequest, catalog: CatalogProduct[]): ChatReply {
-  const instant = getStoreReply(request.message);
-  if (instant) return instant;
+export function getCatalogSearch(request: ChatRequest, catalog: CatalogProduct[] = [], includeMessage = true): CatalogSearch {
   let search: Search = { terms: [], colors: [], budget: {}, cheapest: false };
   for (const message of request.history ?? []) {
     if (message.role === "user" && !getStoreReply(message.content)) search = updateSearch(search, message.content, catalog);
   }
+  return includeMessage ? updateSearch(search, request.message, catalog) : search;
+}
+
+export function createShopReply(request: ChatRequest, catalog: CatalogProduct[]): ChatReply {
+  const instant = getStoreReply(request.message);
+  if (instant) return instant;
+  let search = getCatalogSearch(request, catalog, false);
   const contextual = catalog.find((product) => product.id === request.productId);
   const cheaper = /\bcheaper\b/i.test(request.message);
   const contextualAnchor = contextual && !search.terms.length;
-  const previous = contextualAnchor ? contextual : matches(catalog, search)[0];
+  const previous = contextualAnchor ? contextual : getCatalogMatches(catalog, search)[0];
   search = updateSearch(search, request.message, catalog);
-  if (cheaper && contextualAnchor && !search.terms.length) search.terms = categoryTerms(contextual);
+  if (cheaper && contextualAnchor && !search.terms.length) search.terms = getProductCategoryTerms(contextual);
   const explicitBrowse = /\b(show|browse|see)\s+(?:me\s+)?(?:all|your)\s+(?:the\s+)?(?:products|items)\b/i.test(request.message);
-  let candidates = matches(catalog, search);
+  let candidates = getCatalogMatches(catalog, search);
   if (contextual && !cheaper && !search.terms.length && !Object.keys(search.budget).length && !explicitBrowse) {
     candidates = candidates.filter((product) => product.id === contextual.id);
   }

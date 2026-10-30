@@ -35,6 +35,18 @@ node --experimental-strip-types --test tests/shop-assistant.test.mjs
 
 They cover currency and budget parsing, strict price boundaries, contextual colour and cheaper-product questions, stock, unknown products, request validation, and safe catalog normalization. The optional AI integration needs real provider credentials for a live provider check.
 
+## Draft catalog and bulk approval
+
+Open `/admin/products/drafts` from **Products → Review product drafts**. Apply the additive SQL migration and grant your existing owner account catalog access as described in `docs/draft-database.md` before using it. Draft data stays in its own protected table; the public storefront and assistant read approved products only.
+
+The requested starter contains 5,000 unpublished planning drafts in each of Smartwatches, Sneakers, Phones, Powerbanks, Clothes & Trousers, and Perfumes (30,000 total). Generation is repeatable without replacing edits. Generated records have no invented selling price, stock or images. To save an offline JSONL copy, run `node --experimental-strip-types scripts/generate-draft-catalog.mjs /path/to/product-drafts.jsonl` with Node.js 22.18+.
+
+Review individual drafts, or export filtered CSV, fill real product details, and import the edited CSV. Keep SKUs unchanged. CSV arrays use `|`; `verified` accepts `true` or `false`. Blank price and stock stay unset. Imports update drafts and never publish products. A category is fixed when the draft is generated.
+
+**Approve selected** publishes valid selected drafts. **Approve all valid drafts** publishes valid drafts across the selected category and all its pages; name search does not narrow this action. Each publication request commits at most 100 records. You can stop between batches and resume without duplicates. Publication requires a real name, positive selling price, whole available stock quantity, HTTPS product images and explicit verification. Only the allowlisted owner can approve. No generated record is verified automatically.
+
+The public catalog uses 36 products per page. The assistant now applies database filters instead of loading just the latest 500 products, then validates a bounded candidate set. Complex option-only queries and very broad substring matches may need a dedicated database search function as the catalog grows. Confirm the existing Supabase product column types during database setup before enabling the new query implementation.
+
 ## Original Next.js notes
 
 This project was bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).

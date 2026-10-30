@@ -173,6 +173,8 @@ export default function AdminProductsPage() {
               </p>
             </div>
 
+            <div className="flex flex-wrap items-center gap-3">
+            <Link href="/admin/products/drafts" className="rounded-xl border border-gray-200 bg-white px-5 py-3 text-sm font-bold transition hover:border-[#ff7800]">Review product drafts</Link>
             <button
               type="button"
               onClick={() =>
@@ -183,6 +185,7 @@ export default function AdminProductsPage() {
               <span className="text-lg leading-none">+</span>
               Add Product
             </button>
+            </div>
           </div>
         </section>
 

@@ -1,18 +1,25 @@
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   catalogUnavailableReply,
   createShopReply,
+  getCatalogMatches,
+  getCatalogSearch,
+  getProductCategoryTerms,
   getStoreReply,
   normalizeCatalog,
   validateChatRequest,
   type ChatReply,
   type ChatRequest,
+  type CatalogProduct,
+  type CatalogSearch,
 } from "@/lib/shop-assistant";
 
 export const runtime = "nodejs";
 
 const MAX_BODY_BYTES = 32_768;
+const MAX_CANDIDATES = 100;
+const PRODUCT_FIELDS = "id,name,price,description,types,colors,images,stock";
 const WINDOW_MS = 60_000;
 // This bounded throttle is per server instance. Use shared storage at higher traffic.
 const requests = new Map<string, { count: number; until: number }>();
@@ -56,6 +63,79 @@ async function readBody(request: Request): Promise<unknown> {
   let offset = 0;
   for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
   return JSON.parse(new TextDecoder().decode(body));
+}
+
+function variants(term: string): string[] {
+  const aliases = term === "shoe" ? ["shoe", "shoes", "sneaker", "sneakers", "trainer", "trainers", "footwear"]
+    : term === "watch" ? ["watch", "watches", "smartwatch", "smartwatches"]
+      : term === "gray" ? ["gray", "grey"] : [term];
+  return [...new Set(aliases.flatMap((value) => [value, value[0].toUpperCase() + value.slice(1), value.toUpperCase()]))];
+}
+
+async function queryCandidates(client: SupabaseClient, search: CatalogSearch, limit: number, options: {
+  priceCeiling?: number;
+  input: ChatRequest;
+  includeMessage?: boolean;
+  context: CatalogProduct[];
+}): Promise<CatalogProduct[]> {
+  // Only helper-produced alphanumeric tokens enter PostgREST's raw OR syntax.
+  const terms = search.terms.filter((term) => /^[a-z][a-z0-9]*$/.test(term)).slice(0, 12).map((term) => term.slice(0, 80));
+  const colors = search.colors.filter((color) => /^[a-z][a-z0-9]*$/.test(color)).slice(0, 12);
+  if (search.budget.min !== undefined && !Number.isFinite(search.budget.min)) return [];
+
+  async function load(inStock: boolean) {
+    let query = client.from("products").select(PRODUCT_FIELDS);
+    for (const term of terms) {
+      const alternatives = variants(term);
+      const filters = alternatives.flatMap((value) => [
+        `name.ilike.%${value}%`, `description.ilike.%${value}%`,
+        `types.cs.{${value}}`, `colors.cs.{${value}}`,
+      ]);
+      query = query.or(filters.join(","));
+    }
+    for (const color of colors) query = query.or(variants(color).map((value) => `colors.cs.{${value}}`).join(","));
+    const { min, max, strictMin, strictMax } = search.budget;
+    if (min !== undefined) query = strictMin ? query.gt("price", min) : query.gte("price", min);
+    if (max !== undefined && Number.isFinite(max)) query = strictMax ? query.lt("price", max) : query.lte("price", max);
+    if (options.priceCeiling !== undefined) query = query.lt("price", options.priceCeiling);
+    query = inStock ? query.gt("stock", 0) : query.or("stock.lte.0,stock.is.null");
+    if (search.cheapest) query = query.order("price", { ascending: true });
+    const { data, error } = await query.order("id", { ascending: false }).limit(limit);
+    if (error) throw new Error("catalog_query_failed");
+    const products = normalizeCatalog(data);
+    const resolvedSearch = getCatalogSearch(options.input, [...options.context, ...products], options.includeMessage ?? true);
+    return getCatalogMatches(products, resolvedSearch);
+  }
+
+  const available = await load(true);
+  return available.length ? available : load(false);
+}
+
+async function loadChatCatalog(client: SupabaseClient, input: ChatRequest): Promise<CatalogProduct[]> {
+  let contextual: CatalogProduct | undefined;
+  if (input.productId !== undefined) {
+    const { data, error } = await client.from("products").select(PRODUCT_FIELDS).eq("id", input.productId).maybeSingle();
+    if (error) throw new Error("catalog_context_failed");
+    contextual = normalizeCatalog(data ? [data] : [])[0];
+  }
+  const context = contextual ? [contextual] : [];
+  const previousSearch = getCatalogSearch(input, context, false);
+  const search = getCatalogSearch(input, context);
+  const cheaper = /\bcheaper\b/i.test(input.message);
+  const explicitBrowse = /\b(show|browse|see)\s+(?:me\s+)?(?:all|your)\s+(?:the\s+)?(?:products|items)\b/i.test(input.message);
+  if (contextual && !cheaper && !search.terms.length && !Object.keys(search.budget).length && !explicitBrowse) return context;
+
+  let previous: CatalogProduct | undefined;
+  if (cheaper && contextual && !previousSearch.terms.length) {
+    previous = contextual;
+    if (!search.terms.length) search.terms = getProductCategoryTerms(contextual);
+  } else if (cheaper && (input.history ?? []).some((message) => message.role === "user")) {
+    previous = (await queryCandidates(client, previousSearch, 1, { input, includeMessage: false, context }))[0];
+  }
+  const reserved = [...context, ...(previous ? [previous] : [])];
+  const candidates = await queryCandidates(client, search, MAX_CANDIDATES - reserved.length, { priceCeiling: previous?.price, input, context });
+  return [...new Map([...reserved, ...candidates].map((product) => [product.id, product])).values()]
+    .sort((a, b) => b.id - a.id).slice(0, MAX_CANDIDATES);
 }
 
 async function phraseReply(input: ChatRequest, result: ChatReply): Promise<ChatReply> {
@@ -107,15 +187,13 @@ export async function POST(request: Request) {
   const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
   if (!url || !publishableKey) return Response.json(catalogUnavailableReply(), { headers });
   try {
+    const catalogDeadline = AbortSignal.timeout(12_000);
     const catalog = createClient(url, publishableKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-      global: { fetch: (resource, options) => fetch(resource, { ...options, cache: "no-store", signal: AbortSignal.timeout(8000) }) },
+      global: { fetch: (resource, options) => fetch(resource, { ...options, cache: "no-store", signal: AbortSignal.any([catalogDeadline, AbortSignal.timeout(8000), request.signal]) }) },
     });
-    const { data, error } = await catalog.from("products")
-      .select("id,name,price,description,types,colors,images,stock")
-      .order("id", { ascending: false }).limit(500);
-    if (error) return Response.json(catalogUnavailableReply(), { headers });
-    const result = createShopReply(parsed.data, normalizeCatalog(data));
+    const products = await loadChatCatalog(catalog, parsed.data);
+    const result = createShopReply(parsed.data, products);
     return Response.json(await phraseReply(parsed.data, result), { headers });
   } catch {
     return Response.json(catalogUnavailableReply(), { headers });

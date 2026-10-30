@@ -3,11 +3,55 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 
-export default async function HomePage() {
-  const { data: products, error } = await supabase
-    .from("products")
-    .select("*")
-    .order("created_at", { ascending: false });
+const PAGE_SIZE = 36;
+type SearchParams = { [key: string]: string | string[] | undefined };
+
+function single(value: string | string[] | undefined): string {
+  return typeof value === "string" ? value : "";
+}
+
+export default async function HomePage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const params = await searchParams;
+  const search = single(params.q).trim().slice(0, 100);
+  const requestedCategory = single(params.category).trim().slice(0, 60);
+  const requestedPage = /^\d{1,7}$/.test(single(params.page)) ? Math.max(1, Number(single(params.page))) : 1;
+  const tokens = [...new Set(search.match(/[\p{L}\p{N}]+/gu) ?? [])].slice(0, 6).map((token) => token.slice(0, 40));
+  const categoryResult = await supabase.rpc("catalog_public_categories");
+  const categories: string[] = !categoryResult.error && Array.isArray(categoryResult.data)
+    ? categoryResult.data.filter((value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 60)
+    : [];
+  const category = categories.includes(requestedCategory) ? requestedCategory : "";
+
+  function productQuery(countOnly = false) {
+    let query = supabase.from("products").select(
+      "id,name,price,description,images,created_at",
+      countOnly ? { count: "exact", head: true } : {},
+    );
+    if (category) query = query.eq("catalog_category", category);
+    for (const token of tokens) query = query.or(`name.ilike.%${token}%,description.ilike.%${token}%`);
+    return query;
+  }
+
+  const countResult = await productQuery(true);
+  const total = countResult.count ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * PAGE_SIZE;
+  const productResult = countResult.error ? null : await productQuery()
+    .order("created_at", { ascending: false }).order("id", { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1);
+  const products = productResult?.data;
+  const error = countResult.error ?? productResult?.error;
+  const pageNumbers = [...new Set([1, page - 1, page, page + 1, totalPages])]
+    .filter((value) => value >= 1 && value <= totalPages).sort((a, b) => a - b);
+
+  function pageHref(value: number) {
+    const query = new URLSearchParams();
+    if (search) query.set("q", search);
+    if (category) query.set("category", category);
+    query.set("page", String(value));
+    return `/?${query.toString()}#products`;
+  }
 
   if (error) {
     return (
@@ -201,6 +245,28 @@ export default async function HomePage() {
           </h2>
         </div>
 
+        <form action="/#products" method="get" className="mb-6 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-gray-50 p-4 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <label htmlFor="catalog-search" className="mb-2 block text-sm font-semibold">Find a product</label>
+            <input id="catalog-search" name="q" type="search" defaultValue={search} maxLength={100}
+              placeholder="Search by name or description" className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base outline-offset-2 focus:outline-[#ff7800]" />
+          </div>
+          {categories.length > 0 && (
+            <div className="sm:w-56">
+              <label htmlFor="catalog-category" className="mb-2 block text-sm font-semibold">Category</label>
+              <select id="catalog-category" name="category" defaultValue={category} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-base outline-offset-2 focus:outline-[#ff7800]">
+                <option value="">All categories</option>
+                {categories.map((value) => <option key={value} value={value}>{value}</option>)}
+              </select>
+            </div>
+          )}
+          <button type="submit" className="rounded-lg bg-[#071a3d] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#ff7800]">Search</button>
+          {(search || category) && <Link href="/#products" className="rounded-lg px-3 py-3 text-center text-sm font-semibold underline">Clear filters</Link>}
+        </form>
+        <p className="mb-5 text-sm text-gray-600" aria-live="polite">
+          {total > 0 ? `Showing ${(offset + 1).toLocaleString()}–${Math.min(offset + PAGE_SIZE, total).toLocaleString()} of ${total.toLocaleString()} products` : "0 products"}
+        </p>
+
         {products && products.length > 0 ? (
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-2 sm:gap-8 lg:grid-cols-4">
             {products.map((product, index) => (
@@ -209,7 +275,7 @@ export default async function HomePage() {
                 href={`/product/${product.id}`}
                 className="group block overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-[#ff7800]/30 hover:shadow-xl sm:rounded-2xl"
                 style={{
-                  animation: `fadeUp 0.5s ease-out ${index * 0.08}s both`,
+                  animation: `fadeUp 0.5s ease-out ${Math.min(index, 7) * 0.08}s both`,
                 }}
               >
                 {/* Product Image */}
@@ -252,7 +318,20 @@ export default async function HomePage() {
             ))}
           </div>
         ) : (
-          <p className="text-gray-600">No products available yet.</p>
+          <p className="text-gray-600">{search || category ? "No products match these filters. Try another search or category." : "No products available yet."}</p>
+        )}
+        {totalPages > 1 && (
+          <nav aria-label="Product pages" className="mt-9 flex flex-wrap items-center justify-center gap-2 text-sm">
+            {page > 1 && <Link href={pageHref(page - 1)} className="rounded-lg border border-gray-300 px-3 py-2 font-semibold hover:border-[#ff7800]">Previous</Link>}
+            {pageNumbers.map((value, index) => (
+              <span key={value} className="inline-flex items-center gap-2">
+                {index > 0 && value - pageNumbers[index - 1] > 1 && <span className="px-1 text-gray-500" aria-hidden="true">…</span>}
+                <Link href={pageHref(value)} aria-label={`Page ${value}`} aria-current={value === page ? "page" : undefined}
+                  className={value === page ? "rounded-lg bg-[#071a3d] px-3 py-2 font-semibold text-white" : "rounded-lg border border-gray-300 px-3 py-2 font-semibold hover:border-[#ff7800]"}>{value}</Link>
+              </span>
+            ))}
+            {page < totalPages && <Link href={pageHref(page + 1)} className="rounded-lg border border-gray-300 px-3 py-2 font-semibold hover:border-[#ff7800]">Next</Link>}
+          </nav>
         )}
       </section>
 
